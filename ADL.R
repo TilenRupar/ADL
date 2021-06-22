@@ -2,8 +2,6 @@ title: "Activities of Daily Living (ADLs)"
 author: "Tilen Rupar"
 date: "16 6 2021"
 
-#proxy
-Sys.setenv(HTTPS_PROXY='http://proxy.gov.si:80') 
 #Working directory
 setwd("E:/R/ADL")
 library(tidyverse)
@@ -29,16 +27,11 @@ colnames(ADL) <- colnames(read_tsv("OrdonezA_ADLs.txt")[,1:3])
 
 #Character vector in factor with 9 levels
 ADL$Activity <- as.factor(ADL$Activity)
-str(ADL)
 ggplot(ADL, aes(x=Activity)) +
   geom_bar()
 ADL$`Start time` <- as.double(ADL$`Start time`)
 ADL$`End time` <- as.double(ADL$`End time`)
-
-#Create a date and a time object separately
-ADL$Date <- as.Date(ADL$`Start time`) 
-ADL$Time <- unclass(ADL$`Start time`)
-
+str(ADL)
 
 # Data partitioning - 0.7 data goes into training
 set.seed(100)
