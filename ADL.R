@@ -2,13 +2,15 @@ title: "Activities of Daily Living (ADLs)"
 author: "Tilen Rupar"
 date: "16 6 2021"
 
+#proxy
+Sys.setenv(HTTPS_PROXY='http://proxy.gov.si:80') 
 #Working directory
 setwd("E:/R/ADL")
 library(tidyverse)
 library(readr)
 library(caret)
 library(ggplot2)
-library(keras)
+library(class)
 
 ## Project goals
 # I will try to predict human activity based on sensory data with machine learning algorithm.
@@ -25,20 +27,33 @@ setwd("E:/R/ADL/UCI ADL Binary Dataset")
 ADL <- read_tsv("OrdonezA_ADLs.txt", skip = 2, col_names = F, trim_ws = T, skip_empty_rows = T, )[,c(1,3,5)] 
 colnames(ADL) <- colnames(read_tsv("OrdonezA_ADLs.txt")[,1:3])
 
-#Editing the dependent variable as a classification object: Character vector to factor with 9 levels
+#Character vector in factor with 9 levels
 ADL$Activity <- as.factor(ADL$Activity)
 str(ADL)
 ggplot(ADL, aes(x=Activity)) +
   geom_bar()
+ADL$`Start time` <- as.double(ADL$`Start time`)
+ADL$`End time` <- as.double(ADL$`End time`)
 
-# Data partitioning - 0.8 data goes into training
+#Create a date and a time object separately
+ADL$Date <- as.Date(ADL$`Start time`) 
+ADL$Time <- unclass(ADL$`Start time`)
+
+
+# Data partitioning - 0.7 data goes into training
 set.seed(100)
 sample_rows <- createDataPartition(ADL$Activity, p=0.8, list = F)
 ADL_train <- ADL[sample_rows,]
 ADL_test <- ADL[-sample_rows,]
 
-modelFit <- train(Activity ~ ., method="rf", data=ADL_train,
+#k-nearest neighbours model - 15% accuracy
+ADL_kNN <- knn(ADL_train[,-3], ADL_test[,-3], cl=ADL_train$Activity, k = 7)
+table(ADL_test$Activity, ADL_kNN)
+mean(ADL_test$Activity == ADL_kNN)
+
+#Random forest model, 4,5% accuracy
+ADL_rf <- train(Activity ~ `Start time` + `End time` , method="rf", data=ADL_train,
                   ntree=500, tuneGrid=data.frame(.mtry = 3))
 
-predictedADL <- predict(modelFit, ADL_test)
+predictedADL <- predict(ADL_rf, ADL_test)
 confusionMatrix(ADL_test$Activity, predictedADL)
