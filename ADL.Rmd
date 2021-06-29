@@ -2,7 +2,7 @@
 title: "Activities of Daily Living (ADLs)"
 author: "Tilen Rupar"
 date: "23 6 2021"
-output: html_document
+output: pdf_document
 ---
 
 ```{r, echo=F, results='hide'}
