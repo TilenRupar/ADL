@@ -1,0 +1,157 @@
+---
+title: "Activities of Daily Living (ADLs)"
+author: "Tilen Rupar"
+date: "23 6 2021"
+output: pdf_document
+---
+
+```{r, echo=F, results='hide'}
+setwd("E:/R/ADL/UCI ADL Binary Dataset")
+Sys.setlocale("LC_TIME", "C")
+```
+
+```{r setup, warning = F, message=F}
+library(tidyverse)
+library(readr)
+library(lubridate)
+library(caret)
+library(ggplot2)
+library(class)
+```
+
+# Project goals
+I will try to predict human activity based on sensory data with machine learning algorithm.
+
+The machine learning algorithm is a supervised time series classification model. It uses POSIXct class (timestamp) to classify human activity, based on the time of the day. 
+
+Data: [UCI Machine learning repository: ADL data](https://archive.ics.uci.edu/ml/datasets/Activities+of+Daily+Living+(ADLs)+Recognition+Using+Binary+Sensors)
+
+```{r, echo=F}
+na.omit(scan("OrdonezA_Description.txt", 
+             sep = "\t", 
+             what = "raw", 
+             na.strings = "", 
+             blank.lines.skip = T, ))
+
+```
+
+
+```{r Import data, warning = F, message=F}
+#ADL.uci_file <- download.file('https://archive.ics.uci.edu/ml/machine-learning-databases/00271/UCI ADL Binary Dataset.zip', destfile = "./ADL.zip")
+#unzip("./ADL.zip")
+
+# Activities of Daily Living (ADLs) Recognition Using Binary Sensors Data Set (User "A")
+ADL <- read.table("OrdonezA_ADLs.txt", skip = 2)
+colnames(ADL) <- read.table("OrdonezA_ADLs.txt", nrows = 1)
+
+#Creating a date time object for merging with the sensor dataset 
+ADL$Start_Date_time <- as.POSIXct(paste(ADL$Start, ADL$time), format="%Y-%m-%d %H:%M:%S")
+ADL <- subset(ADL, select = c(Activity, Start_Date_time))
+
+#Reading the sensor dataset
+ADL_sensor <- read.table("OrdonezA_Sensors.txt", skip = 2)
+colnames(ADL_sensor) <- read.table("OrdonezA_Sensors.txt", nrows = 1)
+ADL_sensor$Start_Date_time<- as.POSIXct(paste(ADL_sensor$Start, ADL_sensor$time), 
+                                        format="%Y-%m-%d %H:%M:%S")
+ADL_sensor <- subset(ADL_sensor, select = c(Start_Date_time, Location, Type, Place))
+# Merging the Activity and sensor data
+ADL <- merge(x = ADL, y = ADL_sensor, by = intersect(names(ADL), names(ADL_sensor)))
+#add a day name, 
+ADL$Day <- as.factor(weekdays(as.Date(ADL$Start)))
+# a Dummy for weekend 
+ADL$isWKND <- as.double(ADL$Day %in% c("Saturday", "Sunday"))
+
+# and Time_of_day labels
+# create breaks
+breaks <- hour(hm("00:00", "6:00", "12:00", "18:00", "23:59"))
+# labels for the breaks
+labels <- c("Night", "Morning", "Afternoon", "Evening")
+ADL$Time_of_day <- cut(x=hour(ADL$Start_Date_time), breaks = breaks, labels = labels, include.lowest=TRUE)
+```
+
+## Imported data:
+```{r}
+head(ADL)
+```
+
+We are interested in predicting Activity, based on Start and End time. Thus we turn the character vector "Activity" in factor with 9 levels: 
+```{r, echo= FALSE}
+unique(ADL$Activity)
+``` 
+
+# We visualize the Activity data: 
+```{r}
+ggplot(ADL, aes(x=Activity)) +
+  geom_bar()
+```
+
+For the modelling purposes we need to convert the variables into numeric objects. 
+
+```{r Structuring the data}
+ADL_modData <- data.frame(Activity = as.factor(ADL$Activity),
+                          Location = as.numeric(as.factor(ADL$Location)),
+                          Type = as.numeric(as.factor(ADL$Type)),
+                          Place = as.numeric(as.factor(ADL$Place)),
+                          Day = as.numeric(ADL$Day),
+                          Time_of_day = as.numeric(ADL$Time_of_day),
+                          isWKND = ADL$isWKND)
+str(ADL_modData)
+```
+
+Data partitioning (using caret package) - 0.8 data goes into training
+
+```{r}
+set.seed(100)
+sample_rows <- as.vector(createDataPartition(ADL_modData$Activity, p=0.8, list = F))
+ADL_train <- ADL_modData[sample_rows,]
+ADL_test <- ADL_modData[-sample_rows,]
+```
+
+Applying the **k-Nearest neighbours model** to the ADL data 
+
+```{r}
+ADL_kNN <- knn(ADL_train[,-1], ADL_test[,-1], cl=ADL_train$Activity, k = 7)
+```
+
+# Creating the confusion matrix for the kNN model (Accuracy check)
+
+```{r}
+table(ADL_test$Activity, ADL_kNN)
+```
+
+## Next, we check the accuracy rate of the kNN model:
+
+```{r}
+mean(ADL_test$Activity == ADL_kNN)
+```
+
+The kNN model predicted with **86,4% accuracy rate**.
+
+Next, we try to fit the **random forest model** to the data.
+
+```{r}
+#Before applying machine learning algorithms to train our model, let us first tune the cross-validation parameters. 
+#We expect our out-of-sample error to be low because 5-fold CV should take its effect and avoid overfitting.
+fitControl <- trainControl(method = "cv", number = 5, returnResamp = "all")
+
+#Random forest model
+ADL_rf <- train(Activity ~ Time_of_day + isWKND + Day + Location + Type + Place, method="rf", data=ADL_train,ntree=1000, tuneGrid=data.frame(.mtry = 3))
+```
+
+# Creating a prediction based on RF training data and analyzing the confusion matrix
+
+```{r}
+predictedADL_rf <- predict(ADL_rf, ADL_test)
+
+confusionMatrix(ADL_test$Activity, predictedADL_rf)
+```
+
+AS we can see, the random forest model did not capture the data successfully,  the accuracy is 94,59%. 
+
+# Presentation of the predicted vs. actual Activity 
+
+```{r}
+
+data.frame(Actual_data = ADL_test$Activity, Random_Forest_prediction = predictedADL_rf, kNN_prediction = ADL_kNN)
+```
+
